@@ -30,7 +30,11 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: "21"
+          java-version: |
+            8
+            16
+            17
+            21
           cache: maven
 
       - name: Cache BuildTools workspaces
@@ -51,11 +55,22 @@ jobs:
             workspace="buildtools-cache/$version"
             mkdir -p "$workspace"
             echo "Installing CraftBukkit artifacts for $version"
+            case "$version" in
+              1.16*) export JAVA_HOME="$JAVA_HOME_8_X64" ;;
+              1.17*) export JAVA_HOME="$JAVA_HOME_16_X64" ;;
+              1.18*|1.19*|1.20.1|1.20.2|1.20.3|1.20.4) export JAVA_HOME="$JAVA_HOME_17_X64" ;;
+              *) export JAVA_HOME="$JAVA_HOME_21_X64" ;;
+            esac
+            export PATH="$JAVA_HOME/bin:$PATH"
+            java -version
             java -jar buildtools-cache/BuildTools.jar --rev "$version" --output-dir "$workspace"
           done
 
       - name: Build jar
-        run: mvn -B -DskipTests package
+        run: |
+          export JAVA_HOME="$JAVA_HOME_21_X64"
+          export PATH="$JAVA_HOME/bin:$PATH"
+          mvn -B -DskipTests package
 
       - name: Create release tag
         id: release_tag
