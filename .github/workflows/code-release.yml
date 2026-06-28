@@ -18,25 +18,54 @@ permissions:
 
 jobs:
   release:
-    name: Publish source release
+    name: Build and publish jar release
     runs-on: ubuntu-latest
+    timeout-minutes: 360
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Cache BuildTools workspaces
+        uses: actions/cache@v4
+        with:
+          path: buildtools-cache
+          key: buildtools-${{ runner.os }}-${{ hashFiles("**/pom.xml") }}
+          restore-keys: |
+            buildtools-${{ runner.os }}-
+
+      - name: Install CraftBukkit dependencies
+        run: |
+          set -euo pipefail
+          mkdir -p buildtools-cache
+          curl -fsSL -o buildtools-cache/BuildTools.jar https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar
+          versions=$(grep -RhoP '<version>\K[^<]+(?=-R0\.1-SNAPSHOT</version>)' abstraction V*/pom.xml | sort -Vu)
+          for version in $versions; do
+            workspace="buildtools-cache/$version"
+            mkdir -p "$workspace"
+            echo "Installing CraftBukkit artifacts for $version"
+            java -jar buildtools-cache/BuildTools.jar --rev "$version" --output-dir "$workspace"
+          done
+
+      - name: Build jar
+        run: mvn -B -DskipTests package
+
       - name: Create release tag
         id: release_tag
         run: echo "tag=code-${GITHUB_RUN_NUMBER}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
-
-      - name: Package source
-        run: git archive --format=zip --output "ImageFrame-${{ steps.release_tag.outputs.tag }}.zip" "$GITHUB_SHA"
 
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ steps.release_tag.outputs.tag }}" "ImageFrame-${{ steps.release_tag.outputs.tag }}.zip" \
+          gh release create "${{ steps.release_tag.outputs.tag }}" common/target/ImageFrame-*.jar \
             --target "$GITHUB_SHA" \
             --title "Code release ${{ steps.release_tag.outputs.tag }}" \
-            --notes "Automated source release for code changes in $GITHUB_SHA."
+            --notes "Automated jar release for code changes in $GITHUB_SHA."
