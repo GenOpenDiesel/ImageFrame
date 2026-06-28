@@ -37,7 +37,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: buildtools-cache
-          key: buildtools-${{ runner.os }}-${{ hashFiles("**/pom.xml") }}
+          key: buildtools-${{ runner.os }}-${{ hashFiles('**/pom.xml') }}
           restore-keys: |
             buildtools-${{ runner.os }}-
 
