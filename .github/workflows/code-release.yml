@@ -52,6 +52,10 @@ jobs:
           ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
           selected_modules = ['abstraction', 'V1_21_11', 'V26_1_2', 'common']
           selected_artifacts = {'ImageFrame-Abstraction', 'ImageFrame-V1_21_11', 'ImageFrame-V26_1_2'}
+          spigot_versions = {
+              'V1_21_11/pom.xml': '1.21.11-R0.2-SNAPSHOT',
+              'V26_1_2/pom.xml': '26.1.2-R0.1-SNAPSHOT',
+          }
 
           root_tree = ET.parse('pom.xml')
           root = root_tree.getroot()
@@ -71,6 +75,31 @@ jobs:
               if group_id == 'com.loohp' and artifact_id.startswith('ImageFrame-') and artifact_id not in selected_artifacts:
                   dependencies.remove(dependency)
           common_tree.write('common/pom.xml', encoding='UTF-8', xml_declaration=True)
+
+          abstraction_tree = ET.parse('abstraction/pom.xml')
+          abstraction_root = abstraction_tree.getroot()
+          abstraction_dependencies = abstraction_root.find('m:dependencies', ns)
+          for dependency in list(abstraction_dependencies):
+              artifact_id = dependency.findtext('m:artifactId', default='', namespaces=ns)
+              if artifact_id == 'craftbukkit':
+                  abstraction_dependencies.remove(dependency)
+              elif artifact_id == 'spigot-api':
+                  dependency.find('m:version', ns).text = '1.21.11-R0.2-SNAPSHOT'
+          abstraction_tree.write('abstraction/pom.xml', encoding='UTF-8', xml_declaration=True)
+
+          for pom_path, spigot_version in spigot_versions.items():
+              module_tree = ET.parse(pom_path)
+              module_root = module_tree.getroot()
+              module_dependencies = module_root.find('m:dependencies', ns)
+              for dependency in module_dependencies:
+                  artifact_id = dependency.findtext('m:artifactId', default='', namespaces=ns)
+                  if artifact_id == 'spigot-api':
+                      dependency.find('m:version', ns).text = spigot_version
+                  elif artifact_id == 'craftbukkit':
+                      dependency.find('m:groupId', ns).text = 'org.spigotmc'
+                      dependency.find('m:artifactId', ns).text = 'spigot'
+                      dependency.find('m:version', ns).text = spigot_version
+              module_tree.write(pom_path, encoding='UTF-8', xml_declaration=True)
           PY
 
       - name: Install CraftBukkit dependencies
