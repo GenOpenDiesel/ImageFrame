@@ -30,11 +30,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           distribution: temurin
-          java-version: |
-            8
-            16
-            17
-            21
+          java-version: "21"
           cache: maven
 
       - name: Cache BuildTools workspaces
@@ -45,22 +41,47 @@ jobs:
           restore-keys: |
             buildtools-${{ runner.os }}-
 
+      - name: Limit release modules
+        run: |
+          python3 <<'PY'
+          import xml.etree.ElementTree as ET
+
+          ET.register_namespace('', 'http://maven.apache.org/POM/4.0.0')
+          ns = {'m': 'http://maven.apache.org/POM/4.0.0'}
+          selected_modules = ['abstraction', 'V1_21_11', 'V26_1_2', 'common']
+          selected_artifacts = {'ImageFrame-Abstraction', 'ImageFrame-V1_21_11', 'ImageFrame-V26_1_2'}
+
+          root_tree = ET.parse('pom.xml')
+          root = root_tree.getroot()
+          modules = root.find('m:modules', ns)
+          modules.clear()
+          for module_name in selected_modules:
+              module = ET.SubElement(modules, '{http://maven.apache.org/POM/4.0.0}module')
+              module.text = module_name
+          root_tree.write('pom.xml', encoding='UTF-8', xml_declaration=True)
+
+          common_tree = ET.parse('common/pom.xml')
+          common_root = common_tree.getroot()
+          dependencies = common_root.find('m:dependencies', ns)
+          for dependency in list(dependencies):
+              group_id = dependency.findtext('m:groupId', default='', namespaces=ns)
+              artifact_id = dependency.findtext('m:artifactId', default='', namespaces=ns)
+              if group_id == 'com.loohp' and artifact_id.startswith('ImageFrame-') and artifact_id not in selected_artifacts:
+                  dependencies.remove(dependency)
+          common_tree.write('common/pom.xml', encoding='UTF-8', xml_declaration=True)
+          PY
+
       - name: Install CraftBukkit dependencies
         run: |
           set -euo pipefail
           mkdir -p buildtools-cache
           curl -fsSL -o buildtools-cache/BuildTools.jar https://hub.spigotmc.org/jenkins/job/BuildTools/lastSuccessfulBuild/artifact/target/BuildTools.jar
-          versions=$(grep -RhoP '<version>\K[^<]+(?=-R0\.1-SNAPSHOT</version>)' abstraction V*/pom.xml | sort -Vu)
+          versions="1.21.11 26.1.2"
           for version in $versions; do
             workspace="buildtools-cache/$version"
             mkdir -p "$workspace"
             echo "Installing CraftBukkit artifacts for $version"
-            case "$version" in
-              1.16*) export JAVA_HOME="$JAVA_HOME_8_X64" ;;
-              1.17*) export JAVA_HOME="$JAVA_HOME_16_X64" ;;
-              1.18*|1.19*|1.20.1|1.20.2|1.20.3|1.20.4) export JAVA_HOME="$JAVA_HOME_17_X64" ;;
-              *) export JAVA_HOME="$JAVA_HOME_21_X64" ;;
-            esac
+            export JAVA_HOME="$JAVA_HOME_21_X64"
             export PATH="$JAVA_HOME/bin:$PATH"
             java -version
             java -jar buildtools-cache/BuildTools.jar --rev "$version" --output-dir "$workspace"
