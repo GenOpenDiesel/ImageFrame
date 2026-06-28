@@ -46,6 +46,7 @@ import org.bukkit.map.MapView;
 
 import java.awt.image.BufferedImage;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -55,6 +56,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.WeakHashMap;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 import java.util.function.BiPredicate;
@@ -510,12 +512,14 @@ public abstract class ImageMap {
         protected final ImageMapManager manager;
         protected final ImageMap imageMap;
         protected final int index;
+        private final Map<Player, RenderedCanvasState> renderedCanvasStates;
 
         public ImageMapRenderer(ImageMapManager manager, ImageMap imageMap, int index) {
             super(ImageFrame.mapRenderersContextual);
             this.manager = manager;
             this.imageMap = imageMap;
             this.index = index;
+            this.renderedCanvasStates = Collections.synchronizedMap(new WeakHashMap<>());
         }
 
         @Override
@@ -524,11 +528,32 @@ public abstract class ImageMap {
             manager.callRenderEventListener(manager, imageMap, mapView, player, renderData);
             byte[] colors = renderData.getFirst();
             if (colors != null) {
+                renderColors(canvas, player, colors);
+            }
+            canvas.setCursors(MapUtils.toMapCursorCollection(renderData.getSecond()));
+        }
+
+        private void renderColors(MapCanvas canvas, Player player, byte[] colors) {
+            RenderedCanvasState previousState = renderedCanvasStates.get(player);
+            byte[] previousColors = previousState == null || previousState.canvas != canvas ? null : previousState.colors;
+            if (previousColors != null && previousColors.length == colors.length) {
+                boolean changed = false;
+                for (int i = 0; i < colors.length; i++) {
+                    byte color = colors[i];
+                    if (previousColors[i] != color) {
+                        canvas.setPixel(i % MapUtils.MAP_WIDTH, i / MapUtils.MAP_WIDTH, color);
+                        changed = true;
+                    }
+                }
+                if (!changed) {
+                    return;
+                }
+            } else {
                 for (int i = 0; i < colors.length; i++) {
                     canvas.setPixel(i % MapUtils.MAP_WIDTH, i / MapUtils.MAP_WIDTH, colors[i]);
                 }
             }
-            canvas.setCursors(MapUtils.toMapCursorCollection(renderData.getSecond()));
+            renderedCanvasStates.put(player, new RenderedCanvasState(canvas, Arrays.copyOf(colors, colors.length)));
         }
 
         public MutablePair<byte[], Collection<MapCursor>> renderPacketData(MapView mapView, int currentTick, Player player) {
@@ -548,6 +573,18 @@ public abstract class ImageMap {
         }
 
         public abstract MutablePair<byte[], Collection<MapCursor>> renderMap(MapView mapView, Player player);
+
+        private static class RenderedCanvasState {
+
+            private final MapCanvas canvas;
+            private final byte[] colors;
+
+            private RenderedCanvasState(MapCanvas canvas, byte[] colors) {
+                this.canvas = canvas;
+                this.colors = colors;
+            }
+
+        }
 
     }
 
