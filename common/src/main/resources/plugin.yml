@@ -3,7 +3,7 @@ version: '${project.version}'
 main: com.loohp.imageframe.ImageFrame
 api-version: 1.13
 prefix: ImageFrame
-authors: [LOOHP]
+authors: [genallthebest]
 description: Put images on maps and walls!
 folia-supported: true
 softdepend:
